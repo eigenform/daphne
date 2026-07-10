@@ -1,0 +1,12 @@
+[package]
+name = "daphne"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.103"
+bitflags = "2.13.0"
+bitvec = "1.1.1"
+num_enum = "0.7.6"
+pretty-hex = "0.4.2"
+rusb = "0.9.4"
