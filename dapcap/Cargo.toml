@@ -1,0 +1,10 @@
+[package]
+name = "dapcap"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.103"
+daphne = { path = "../daphne" }
+pcap = "2.4.0"
+pretty-hex = "0.4.2"

@@ -83,7 +83,7 @@ impl DapPacketBuf {
 
 
 /// 8-bit DAP command ID
-#[derive(Clone, Copy, IntoPrimitive, FromPrimitive, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, IntoPrimitive, FromPrimitive, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DapCmdId {
     // General Commands

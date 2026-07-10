@@ -10,6 +10,7 @@ pub mod dap;
 pub mod prelude {
     pub use rusb;
     pub use anyhow::{Result, anyhow};
+    pub use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
     pub use crate::probe::*;
     pub use crate::dap::*;
 }
