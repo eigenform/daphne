@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use num_enum::{IntoPrimitive, FromPrimitive, TryFromPrimitive};
+use modular_bitfield::prelude::*;
 use bitflags::bitflags;
 use super::*;
 
@@ -24,16 +25,13 @@ impl SwdSeq {
     }
 }
 
-#[repr(transparent)]
-pub struct SwdConfigurationBits(u8);
-bitflags! {
-    impl SwdConfigurationBits: u8 {
-        const TURNAROUND_1CYC = 0b00 << 0;
-        const TURNAROUND_2CYC = 0b01 << 0;
-        const TURNAROUND_3CYC = 0b10 << 0;
-        const TURNAROUND_4CYC = 0b11 << 0;
-        const DATA_PHASE      = 0b01 << 2;
-    }
+#[bitfield(bits = 8)]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+pub struct SwdConfigurationBits { 
+    pub turnaround: B2,
+    pub data_phase: B1,
+    pub undef3:     B5,
 }
 
 
@@ -46,7 +44,7 @@ impl DapCommand for SwdConfigureCmd {
     const ID: DapCmdId = DapCmdId::SwdConfigure;
     type Resp = SwdConfigureResp;
     fn to_packet(&self) -> Result<DapPacketBuf> {
-        Ok(DapPacketBuf::new(Self::ID.into(), &[self.cfg.bits()]))
+        Ok(DapPacketBuf::new(Self::ID.into(), &[self.cfg.into()]))
     }
 }
 

@@ -29,7 +29,7 @@ use bitvec::prelude::*;
 /// NOTE: For convenience, this sequence is rounded up to 56 bits in length
 /// so that it can be represented with exactly 7 bytes. 
 /// 
-pub const LINE_RESET_SEQ: BitArr!(for 56, in u8, Lsb0) = { 
+pub const LINE_RESET_BITARR: BitArr!(for 56, in u8, Lsb0) = { 
     bitarr!(u8, Lsb0; 1; 56)
 };
 
@@ -39,7 +39,7 @@ pub const LINE_RESET_SEQ: BitArr!(for 56, in u8, Lsb0) = {
 ///
 /// This corresponds to the pair of bytes `[0x9e, 0xe7]`. 
 ///
-pub const JTAG_TO_SWD_SEQ: BitArr!(for 16, in u8, Lsb0) = {
+pub const JTAG_TO_SWD_BITARR: BitArr!(for 16, in u8, Lsb0) = {
     let res = bitarr!(const u8, Lsb0; 
         0, 1, 1, 1, // bit 0, bit 1, bit 2, bit 3,
         1, 0, 0, 1, // ...
@@ -57,7 +57,7 @@ pub const JTAG_TO_SWD_SEQ: BitArr!(for 16, in u8, Lsb0) = {
 ///
 /// This corresponds to the pair of bytes `[0x3c, 0xe7]`. 
 ///
-pub const SWD_TO_JTAG_SEQ: BitArr!(for 16, in u8, Lsb0) = {
+pub const SWD_TO_JTAG_BITARR: BitArr!(for 16, in u8, Lsb0) = {
     let res = bitarr!(const u8, Lsb0; 
         0, 0, 1, 1, // bit 0, bit 1, bit 2, bit 3,
         1, 1, 0, 0, // ...
@@ -68,5 +68,19 @@ pub const SWD_TO_JTAG_SEQ: BitArr!(for 16, in u8, Lsb0) = {
     assert!(res.data[1] == 0xe7);
     res
 };
+
+
+pub const JTAG_TO_SWD_BYTES: [u8; 17] = [ 
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Line reset
+    0x9e, 0xe7,                               // Switch sequence
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Line reset
+    0x00                                      // Idle cycles
+];
+
+pub const SWD_TO_JTAG_BYTES: [u8; 10] = [ 
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Line reset
+    0x3c, 0xe7,                               // Switch sequence
+    0xff,                                     // Idle cycles
+];
 
 

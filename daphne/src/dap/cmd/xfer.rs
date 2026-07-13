@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use num_enum::{IntoPrimitive, FromPrimitive, TryFromPrimitive};
+use num_enum::*;
 use modular_bitfield::prelude::*;
 use bitflags::bitflags;
 
@@ -60,10 +60,35 @@ pub enum TransferKind {
     WriteMatchMask,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TransferAccessKind { 
+    W = 0,
+    R = 1,
+}
+
 /// Representing the target of a CMSIS-DAP [`Transfer`]. 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TransferTarget { DP, AP }
+#[repr(u8)]
+pub enum TransferTarget { 
+    DP = 0,
+    AP = 1,
+}
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct TransferWordIdx(u8);
+impl TransferWordIdx { 
+    pub fn new_idx(val: usize) -> Self { 
+        Self((val & 0b11) as _)
+    }
+    pub fn new_from_offset(val: u8) -> Self { 
+        Self((val & 0b0000_1100) >> 2)
+    }
+    pub fn bits(&self) -> u8 { 
+        self.0
+    }
+}
 
 
 /// Transfer request [control] byte. 
@@ -80,6 +105,48 @@ pub struct TransferReqCtl {
     pub td_timestamp: B1,
 }
 impl TransferReqCtl { 
+    pub fn create(
+        target: TransferTarget, 
+        access: TransferAccessKind, 
+        addr: TransferWordIdx,
+    ) -> Self { 
+        Self::new()
+            .with_apndp(target as _)
+            .with_rnw(access as _)
+            .with_a(addr.bits())
+    }
+
+    pub fn new_dp_read(idx: TransferWordIdx) -> Self { 
+        Self::create(
+            TransferTarget::DP,
+            TransferAccessKind::R,
+            idx
+        )
+    }
+    pub fn new_dp_write(idx: TransferWordIdx) -> Self { 
+        Self::create(
+            TransferTarget::DP,
+            TransferAccessKind::W,
+            idx
+        )
+    }
+    pub fn new_ap_read(idx: TransferWordIdx) -> Self { 
+        Self::create(
+            TransferTarget::AP,
+            TransferAccessKind::R,
+            idx
+        )
+    }
+    pub fn new_ap_write(idx: TransferWordIdx) -> Self { 
+        Self::create(
+            TransferTarget::AP,
+            TransferAccessKind::W,
+            idx
+        )
+    }
+
+
+
     pub fn target(&self) -> TransferTarget { 
         if self.apndp() == 1 { 
             TransferTarget::AP
@@ -175,17 +242,22 @@ impl DapResponse for TransferConfigureResp {
 #[derive(Clone)]
 pub struct TransferCmd { 
     pub dap_idx: u8,
-    //pub tx_cnt: u8,
     pub xfers: Vec<Transfer>,
 }
 impl DapCommand for TransferCmd { 
     const ID: DapCmdId = DapCmdId::Transfer;
     type Resp = TransferRespUnresolved;
     fn to_packet(&self) -> Result<DapPacketBuf> {
+        if self.xfers.len() == 0 { 
+            return Err(anyhow!("cannot serialize empty TransferCmd"));
+        }
 
-        // FIXME: limits
+        let total_sz: usize = self.xfers.iter().map(|x| x.size()).sum();
+        if total_sz + 2 > DapPacketBuf::MAX_PKT_SZ { 
+            return Err(anyhow!("TransferCmd would exceed MAX_PKT_SZ (64)"));
+        }
+
         let tx_cnt = self.xfers.len() as u8;
-
         let hdr = [ self.dap_idx, tx_cnt ];
 
         let mut buf: Vec<u8> = vec![];
@@ -195,13 +267,19 @@ impl DapCommand for TransferCmd {
                 buf.extend_from_slice(val.to_le_bytes().as_slice());
             }
         }
-
         let content = &[ &hdr, buf.as_slice() ].concat();
-
         Ok(DapPacketBuf::new(Self::ID.into(), content))
     }
 }
 impl TransferCmd { 
+    pub fn new_from_slice(dap_idx: u8, slice: &[Transfer]) -> Result<Self> { 
+        let total_sz: usize = slice.iter().map(|x| x.size()).sum();
+        if total_sz + 2 > DapPacketBuf::MAX_PKT_SZ { 
+            return Err(anyhow!("TransferCmd would exceed MAX_PKT_SZ (64)"));
+        }
+        let xfers = slice.to_vec();
+        Ok(Self { dap_idx, xfers })
+    }
     pub fn get_xfer(&self, idx: usize) -> Transfer {
         assert!(idx < self.xfers.len());
         self.xfers[idx].clone()

@@ -16,7 +16,7 @@ CMSIS-DAPv2 probe hackery, specifically for playing with my
 > may be only partially represented or otherwise totally absent from this 
 > library. 
 >
-> There are no guarantees about the correctness/soundness of this library. 
+> There are no guarantees about the correctness/soundness of this library. \
 > In general, you should probably not use this. 
 
 ## License

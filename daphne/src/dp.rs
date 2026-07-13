@@ -2,7 +2,9 @@
 use bitflags::bitflags;
 use modular_bitfield::prelude::*;
 
+use crate::dap::cmd::xfer::TransferWordIdx;
 
+/// Debug port (DP) register name. 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DpRegister { 
     /// Offset 0x0
@@ -25,6 +27,34 @@ pub enum DpRegister {
     Undef,
 }
 impl DpRegister { 
+    pub fn dpbanksel(&self) -> Option<u8> { 
+        match self { 
+            Self::DPIDR     => None,
+            Self::CTRLSTAT  => Some(0),
+            Self::DLCR      => Some(1),
+            Self::TARGETID  => Some(2),
+            Self::DLPIDR    => Some(3),
+            Self::EVENTSTAT => Some(4),
+            Self::SELECT    => None,
+            Self::RDBUFF    => None,
+            Self::Undef     => None,
+        }
+    }
+
+    pub fn word_idx(&self) -> TransferWordIdx { 
+        match self { 
+            Self::DPIDR     => TransferWordIdx::new_from_offset(0x00),
+            Self::CTRLSTAT  => TransferWordIdx::new_from_offset(0x04),
+            Self::DLCR      => TransferWordIdx::new_from_offset(0x04),
+            Self::TARGETID  => TransferWordIdx::new_from_offset(0x04),
+            Self::DLPIDR    => TransferWordIdx::new_from_offset(0x04),
+            Self::EVENTSTAT => TransferWordIdx::new_from_offset(0x04),
+            Self::SELECT    => TransferWordIdx::new_from_offset(0x08),
+            Self::RDBUFF    => TransferWordIdx::new_from_offset(0x0c),
+            Self::Undef     => unreachable!(),
+        }
+    }
+
     pub fn from_address(addr: usize, dpbanksel: usize) -> Self { 
         match (addr, dpbanksel) { 
             (0x0, _)   => Self::DPIDR,
