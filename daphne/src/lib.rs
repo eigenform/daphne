@@ -6,12 +6,19 @@
 
 pub mod probe;
 pub mod dap;
+pub mod swd;
+pub mod dp;
+pub mod ap;
 
 pub mod prelude {
     pub use rusb;
     pub use anyhow::{Result, anyhow};
     pub use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
+    pub use modular_bitfield::prelude::*;
     pub use crate::probe::*;
     pub use crate::dap::*;
+    pub use crate::swd::*;
+    pub use crate::dp::*;
+    pub use crate::ap::*;
 }
 

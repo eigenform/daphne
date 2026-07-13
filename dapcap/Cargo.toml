@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.103"
+clap = { version = "4.6.1", features = ["derive"] }
 daphne = { path = "../daphne" }
 pcap = "2.4.0"
 pretty-hex = "0.4.2"

@@ -5,19 +5,24 @@ CMSIS-DAPv2 probe hackery, specifically for playing with my
 
 ```
 .
-├── dapcap/        # Helper for watching CMSIS-DAP packets over USB
+├── dapcap/        # Helper for watching/parsing USB CMSIS-DAP packets
 ├── daphne/        # Library crate
-├── LICENSE-APACHE # APLv2 license text
-├── LICENSE-MIT    # MIT license text
 └── README.md      # (You are here)
 ```
 
+> [!CAUTION]
+> This is not a "complete" implementation in any sense, and important details
+> from various specifications (CMSIS-DAP, ADIv5, CoreSight, JTAG, SWD, etc.)
+> may be only partially represented or otherwise totally absent from this 
+> library. 
+>
+> There are no guarantees about the correctness/soundness of this library. 
+> In general, you should probably not use this. 
+
 ## License
 
-This project is derived from [adamgreig/jtagdap](https://github.com/adamgreig/jtagdap)
-and retains the original dual licensing. The original license texts are
-preserved in this directory, see:
-
-- [Apache License, Version 2.0](./LICENSE-APACHE)
-- [MIT license](./LICENSE-MIT)
+This project is MIT licensed (see [`LICENSE-MIT`](./LICENSE-MIT)), and was 
+originally based on [adamgreig/jtagdap](https://github.com/adamgreig/jtagdap), 
+which is dual-licensed under either APLv2 or MIT. The original MIT license text
+is preserved here in [`LICENSE-MIT.jtagdap`](./LICENSE-MIT.jtagdap).
 
