@@ -1,10 +1,25 @@
 
 use num_enum::*;
 use modular_bitfield::prelude::*;
+use crate::adi::ap::ApRegOff;
+use serde::{Serialize, Deserialize};
+
+pub struct MemApState { 
+    pub tar_lo: u32,
+}
+impl MemApState { 
+    pub fn new() -> Self { 
+        Self { 
+            tar_lo: 0,
+        } 
+    }
+}
 
 /// The name of a 32-bit MEM-AP register. 
-#[derive(TryFromPrimitive)]
+#[derive(TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize)]
 pub enum MemApRegister { 
     CSW     = 0x00,
     TAR_LO  = 0x04,
@@ -61,6 +76,7 @@ pub enum MemApMode {
 /// MEM-AP Control/Status Word Register
 #[bitfield(bits = 32)]
 #[repr(u32)]
+#[derive(Debug)]
 pub struct MemApCsw {
     pub size: B3,
     pub res3: B1,
@@ -76,4 +92,13 @@ pub struct MemApCsw {
     pub dbg_sw_enable: B1,
 }
 
+#[cfg(test)]
+mod test { 
+    use super::*;
+    #[test]
+    fn bitfield_smoke() { 
+        let x = MemApCsw::from(0xa200_0002);
+        println!("{:#?}", x);
+    }
+}
 

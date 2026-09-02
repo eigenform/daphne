@@ -2,9 +2,23 @@
 
 use anyhow::{Result, anyhow};
 use std::time::Duration;
+use serde::{Serialize, Deserialize};
 use rusb::{
     Context, UsbContext, DeviceHandle, Direction, TransferType,
 };
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum ProbeErr { 
+    TxErr,
+    RxErr,
+}
+impl std::error::Error for ProbeErr {}
+impl std::fmt::Display for ProbeErr { 
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { 
+        write!(f, "{:?}", self)
+    }
+}
+
 
 /// USB interface to a CMSIS-DAPv2 probe.
 ///
@@ -75,32 +89,32 @@ impl DebugProbe {
     }
 
     /// Read data from the RX endpoint.
-    pub fn read(&self) -> Result<Vec<u8>> {
+    pub fn read(&self) -> Result<Vec<u8>, ProbeErr> {
         let mut buf = vec![0u8; self.max_pkt_sz];
         let n = self.handle.read_bulk(
             self.rx_ep, &mut buf, Duration::from_millis(100)
-        )?;
+        ).map_err(|_| ProbeErr::RxErr)?;
         buf.truncate(n);
         Ok(buf)
     }
 
     /// Write data to the TX endpoint.
-    pub fn write(&self, buf: &[u8]) -> Result<usize> {
+    pub fn write(&self, buf: &[u8]) -> Result<usize, ProbeErr> {
         let n = self.handle.write_bulk(
             self.tx_ep, buf, Duration::from_millis(10)
-        )?;
+        ).map_err(|_| ProbeErr::TxErr)?;
         Ok(n)
     }
 
     /// Drain messages from the RX endpoint.
-    pub fn drain(&self) -> Result<()> {
+    pub fn drain(&self) -> Result<(), ProbeErr> {
         let mut buf = vec![0u8; 1024];
         loop {
             match self.handle.read_bulk(self.rx_ep, &mut buf, Duration::from_millis(1)) {
                 Ok(n) if n > 0 => continue,
                 Ok(_) => break,
                 Err(rusb::Error::Timeout) => break,
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(ProbeErr::RxErr),
             }
         }
         Ok(())

@@ -4,7 +4,7 @@ use bitflags::bitflags;
 use super::*;
 
 #[repr(transparent)]
-pub struct SwjPinBits(u8);
+pub struct SwjPinBits(pub u8);
 bitflags! {
     impl SwjPinBits: u8 {
         const SWCLK_TCK = 1 << 0;

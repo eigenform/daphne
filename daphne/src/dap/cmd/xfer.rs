@@ -2,13 +2,35 @@ use anyhow::{Result, anyhow};
 use num_enum::*;
 use modular_bitfield::prelude::*;
 use bitflags::bitflags;
+use serde::{Serialize, Deserialize};
 
-use crate::dp::*;
-use crate::ap::*;
+use crate::adi::*;
 use super::*;
 
+/// Implemented on types that can be translated into one or more DAP transfers.
+pub trait TransferSequence {
+    fn as_transfer_seq(&self) -> Vec<Transfer>;
+}
+
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum XferErr { 
+    ParseErr,
+    ProtocolErr,
+    ValueMismatch,
+    Ack(TransferAck),
+}
+impl std::error::Error for XferErr {}
+impl std::fmt::Display for XferErr { 
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { 
+        write!(f, "{:?}", self)
+    }
+}
+
+
+
 /// A CMSIS-DAP transfer, representing some DP/AP read or write transaction.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Transfer { 
     pub req: TransferReqCtl,
     pub data: Option<u32>,
@@ -21,10 +43,69 @@ impl Transfer {
         Self { req, data: Some(val) }
     }
 
+    /// Create a write to some [`DpRegister`].
+    ///
+    /// NOTE: This is a single transfer, and only encodes the word index 
+    /// associated with the target DP register. This assumes that 
+    /// DPBANKSEL has been set to the appropriate value for the target 
+    /// DP register.
+    pub fn dp_write(reg: DpRegister, data: u32) -> Self { 
+        let req = TransferReqCtl::new_dp_write(reg.word_idx());
+        Self { req, data: Some(data) }
+    }
+
+    /// Create a read to some [`DpRegister`].
+    ///
+    /// NOTE: This is a single transfer, and only encodes the word index 
+    /// associated with the target DP register. This assumes that 
+    /// DPBANKSEL has been set to the appropriate value for the target 
+    /// DP register.
+    pub fn dp_read(reg: DpRegister) -> Self { 
+        let req = TransferReqCtl::new_dp_read(reg.word_idx());
+        Self { req, data: None }
+    }
+
+    /// Create a read to some MEM-AP register. 
+    ///
+    /// NOTE: This is a single transfer, and only encodes the word index 
+    /// associated with the target MEM-AP register. This assumes that 
+    /// APBANKSEL has been set to the appropriate value for the target 
+    /// MEM-AP register. 
+    pub fn mem_ap_read(word_idx: TransferWordIdx) -> Self { 
+        let req = TransferReqCtl::new_ap_read(word_idx);
+        Self { req, data: None }
+    }
+
+    /// Create a write to some MEM-AP register.
+    ///
+    /// NOTE: This is a single transfer, and only encodes the word index 
+    /// associated with the target MEM-AP register. This assumes that 
+    /// APBANKSEL has been set to the appropriate value for the target 
+    /// MEM-AP register. 
+    pub fn mem_ap_write(word_idx: TransferWordIdx, data: u32) -> Self { 
+        let req = TransferReqCtl::new_ap_write(word_idx);
+        Self { req, data: Some(data) }
+    }
+
+    /// Create a write to the DP ABORT register.
+    pub fn write_abort(abort: DpAbort) -> Self { 
+        Self::dp_write(DpRegister::DPIDR, abort.into())
+    }
+
+    /// Create a write to the DP SELECT register.
+    pub fn write_dpselect(select: DpSelect) -> Self { 
+        Self::dp_write(DpRegister::SELECT, select.into())
+    }
+
+
+}
+
+impl Transfer { 
     /// The size of this transfer (in bytes).
     pub fn size(&self) -> usize { 
         if self.data.is_none() { 1 } else { 5 }
     }
+
 
     /// Given some value of 'DPBANKSEL' while this transfer is occurring, 
     /// return the [`DpRegister`] associated with this transfer [if any].
@@ -32,19 +113,19 @@ impl Transfer {
         if self.req.target() != TransferTarget::DP { 
             return None;
         }
-        Some(DpRegister::from_address(self.req.address(), dpbanksel))
+        Some(DpRegister::from_address(self.req.word_idx(), dpbanksel))
     }
 
     /// Given some value of 'APBANKSEL' while this transfer is occurring, 
     /// return the offset of the AP register associated with this transfer
     /// [if any]. 
-    pub fn resolve_ap_register_offset(&self, apbanksel: usize) 
+    pub fn resolve_ap_register_offset(&self, apbanksel: u8) 
         -> Option<ApRegOff> 
     { 
         if self.req.target() != TransferTarget::AP { 
             return None;
         }
-        Some(ApRegOff::new(self.req.address(), apbanksel))
+        Some(ApRegOff::from_word_bank(self.req.word_idx(), apbanksel))
     }
 
 }
@@ -92,9 +173,9 @@ impl TransferWordIdx {
 
 
 /// Transfer request [control] byte. 
-#[derive(Clone, Copy)]
 #[bitfield(bits = 8)]
 #[repr(u8)]
+#[derive(Clone, Copy, Debug)]
 pub struct TransferReqCtl {
     pub apndp: B1,
     pub rnw: B1,
@@ -145,8 +226,12 @@ impl TransferReqCtl {
         )
     }
 
+    /// Return the word index (`A[3:2]`) associated with this transfer.
+    pub fn word_idx(&self) -> TransferWordIdx { 
+        TransferWordIdx::new_idx(self.a() as _)
+    }
 
-
+    /// Return the associated [`TransferTarget`]
     pub fn target(&self) -> TransferTarget { 
         if self.apndp() == 1 { 
             TransferTarget::AP
@@ -154,24 +239,19 @@ impl TransferReqCtl {
             TransferTarget::DP
         }
     }
-    pub fn address(&self) -> usize { 
-        (self.a() << 2) as _
-    }
-    pub fn kind(&self) -> Result<TransferKind> { 
+
+    /// Return the associated [`TransferKind`]
+    pub fn kind(&self) -> Option<TransferKind> { 
         let read = self.rnw() != 0;
         let read_match = self.value_match() != 0;
         let write_mask = self.match_mask() != 0;
 
         match (read, read_match, write_mask) { 
-            (true, true, false)   => Ok(TransferKind::ReadMatch),
-            (true, false, false)  => Ok(TransferKind::Read),
-            (false, false, true)  => Ok(TransferKind::WriteMatchMask),
-            (false, false, false) => Ok(TransferKind::Write),
-            (_, _, _) => { 
-                Err(anyhow!("invalid TransferKind? {:02x}", 
-                    u8::from(*self)
-                ))
-            }
+            (true, true, false)   => Some(TransferKind::ReadMatch),
+            (true, false, false)  => Some(TransferKind::Read),
+            (false, false, true)  => Some(TransferKind::WriteMatchMask),
+            (false, false, false) => Some(TransferKind::Write),
+            (_, _, _) => None,
         }
     }
 
@@ -197,6 +277,7 @@ impl TransferRespCtl {
 
 /// Transfer acknowledgement bits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive)]
+#[derive(Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TransferAck { 
     Ok     = 0b001,
@@ -221,9 +302,15 @@ impl DapCommand for TransferConfigureCmd {
     const ID: DapCmdId = DapCmdId::TransferConfigure;
     type Resp = TransferConfigureResp;
     fn to_packet(&self) -> Result<DapPacketBuf> {
-        unimplemented!();
-        //Ok(DapPacketBuf::new(Self::ID.into(),
-        //))
+        let wait_retry = self.wait_retry.to_le_bytes();
+        let match_retry = self.match_retry.to_le_bytes();
+        Ok(DapPacketBuf::new(Self::ID.into(),
+            &[ 
+                &[self.idle_cycles], 
+                wait_retry.as_slice(), 
+                match_retry.as_slice() 
+            ].concat()
+        ))
     }
 }
 pub struct TransferConfigureResp { 
@@ -280,6 +367,9 @@ impl TransferCmd {
         let xfers = slice.to_vec();
         Ok(Self { dap_idx, xfers })
     }
+    pub fn xfer_cnt(&self) -> u8 { 
+        self.xfers.len() as _
+    }
     pub fn get_xfer(&self, idx: usize) -> Transfer {
         assert!(idx < self.xfers.len());
         self.xfers[idx].clone()
@@ -288,7 +378,7 @@ impl TransferCmd {
 
 /// Response to a [`TransferCmd`]. 
 pub struct TransferRespUnresolved { 
-    pkt: DapPacketBuf,
+    pub pkt: DapPacketBuf,
 }
 impl DapResponse for TransferRespUnresolved {
     fn from_packet(pkt: &DapPacketBuf) -> Result<Self> {
@@ -296,37 +386,52 @@ impl DapResponse for TransferRespUnresolved {
     }
 }
 impl TransferRespUnresolved { 
-    /// Use the given [`TransferCmd`] to "resolve" the structure of 
-    /// this response. 
-    pub fn resolve(&self, cmd: &TransferCmd) -> Result<TransferResp> { 
-        let content = self.pkt.content();
-        let rx_cnt = content[0];
-        let ctl = TransferRespCtl::new(content[1]);
+    pub fn xfer_cnt(&self) -> u8 { 
+        self.pkt.content()[0]
+    }
+    pub fn xfer_respctl(&self) -> TransferRespCtl { 
+        TransferRespCtl::new(self.pkt.content()[1])
+    }
+    pub fn xfer_data(&self) -> &[u8] {
+        &self.pkt.content()[2..]
+    }
 
-        let mut data = Vec::new();
-        let mut cur = 2;
-        for idx in 0..rx_cnt { 
-            let xfer = cmd.get_xfer(idx as _);
-            let kind = xfer.req.kind()?;
+    /// Use the given [`TransferCmd`] to "resolve" this response. 
+    pub fn resolve(&self, cmd: &TransferCmd) -> Result<TransferResp, XferErr> { 
+        if self.xfer_cnt() != cmd.xfer_cnt() { 
+            return Err(XferErr::ParseErr);
+        }
+
+        let xfer_cnt = self.xfer_cnt();
+        let ctl = self.xfer_respctl();
+        let xfer_data = self.xfer_data();
+
+        if self.xfer_data().len() % 4 != 0 { 
+            return Err(XferErr::ParseErr);
+        }
+
+        // The response only contains the results of reads. 
+        // Just clone the transfers from the command, and then fill in 
+        // the results for read transactions. 
+        let mut data = cmd.xfers.clone();
+        let mut cur = 0;
+        for idx in 0..xfer_cnt as usize { 
+            let kind = data[idx].req.kind();
             match kind { 
-                TransferKind::Read |
-                TransferKind::ReadMatch => { 
-                    let val = u32::from_le_bytes(content[cur..cur+4].try_into().unwrap());
-                    data.push(Transfer { 
-                        req: xfer.req,
-                        data: Some(val),
-                    });
+                Some(TransferKind::Write) | 
+                Some(TransferKind::WriteMatchMask) => {},
+                Some(TransferKind::Read) | 
+                Some(TransferKind::ReadMatch) => { 
+                    let val = u32::from_le_bytes(
+                        xfer_data[cur..cur + 4].try_into().unwrap()
+                    );
+                    data[idx].data = Some(val);
                     cur += 4;
                 },
-                TransferKind::Write |
-                TransferKind::WriteMatchMask => {
-                    data.push(Transfer { 
-                        req: xfer.req,
-                        data: xfer.data,
-                    });
+                None => { 
+                    return Err(XferErr::ParseErr);
                 },
             }
-
         }
 
         Ok(TransferResp { ctl, data })
@@ -334,8 +439,30 @@ impl TransferRespUnresolved {
 }
 
 
+/// A response corresponding to some [`TransferCmd`]. 
 pub struct TransferResp { 
     pub ctl: TransferRespCtl,
     pub data: Vec<Transfer>,
+}
+impl TransferResp { 
+    pub fn last_result(&self) -> Option<u32> { 
+        self.data.last().unwrap().data
+    }
+}
+
+pub struct SequenceBuilder { 
+    xfers: Vec<Transfer>,
+}
+impl SequenceBuilder { 
+    pub fn new() -> Self { 
+        Self { xfers: Vec::new() }
+    }
+    pub fn add(mut self, op: impl TransferSequence) -> Self { 
+        self.xfers.extend_from_slice(&op.as_transfer_seq());
+        self
+    }
+    pub fn finish(self) -> Vec<Transfer> { 
+        self.xfers
+    }
 }
 

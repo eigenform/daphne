@@ -36,7 +36,7 @@ fn parse_usb_linux<T>(cap: &mut pcap::Capture<T>) -> Result<()>
             None
         };
         if let Some(pkt) = mpkt { 
-            state.parse_packet(&urb, &pkt);
+            state.parse_packet(&urb, &pkt)?;
         }
     }
     Ok(())

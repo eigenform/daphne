@@ -5,18 +5,45 @@ use modular_bitfield::prelude::*;
 pub mod mem_ap;
 pub use mem_ap::*;
 
+use crate::dap::cmd::xfer::TransferWordIdx;
 
-/// 8-bit offset of an AP register. 
-pub struct ApRegOff(u8);
-impl ApRegOff { 
-    /// Create a new [`ApRegOff`] from the `A[3:2]` bits and some value of 
-    /// `DP.SELECT.APBANKSEL`. 
-    pub fn new(a: usize, apbanksel: usize) -> Self { 
-        let a = (a & 0x0f) as u8;
-        let apbanksel = (apbanksel & 0x0f) as u8;
-        Self(apbanksel << 4 | a)
+/// Implemented on types representing a set of possible AP control registers. 
+pub trait ApRegister {
+    fn ap_reg_off(&self) -> ApRegOff;
+}
+impl ApRegister for MemApRegister {
+    fn ap_reg_off(&self) -> ApRegOff { 
+        let prim: u8 = *self as u8;
+        ApRegOff::from(prim)
     }
-    pub fn value(&self) -> usize { self.0 as _ }
+}
+
+/// 8-bit offset associated with an AP control register. 
+#[bitfield(bits = 8)]
+#[repr(u8)]
+pub struct ApRegOff { 
+    raz0: B1,
+    raz1: B1,
+    pub a:    B2,
+    pub apbanksel: B4,
+}
+impl ApRegOff { 
+    pub fn from_word_bank(word_idx: TransferWordIdx, apbanksel: u8) -> Self { 
+        Self::new().with_a(word_idx.bits()).with_apbanksel(apbanksel)
+    }
+
+    pub fn word_idx(&self) -> TransferWordIdx { 
+        TransferWordIdx::new_idx(self.a() as _)
+    }
+
+    ///// Create a new [`ApRegOff`] from the `A[3:2]` bits and some value of 
+    ///// `DP.SELECT.APBANKSEL`. 
+    //pub fn new(a: usize, apbanksel: usize) -> Self { 
+    //    let a = (a & 0x0f) as u8;
+    //    let apbanksel = (apbanksel & 0x0f) as u8;
+    //    Self(apbanksel << 4 | a)
+    //}
+    //pub fn value(&self) -> u8 { self.0 }
 }
 
 
