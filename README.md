@@ -15,10 +15,16 @@ CMSIS-DAPv2 probe hackery, specifically for playing with my
 > This is not a "complete" implementation in any sense, and important details
 > from various specifications (CMSIS-DAP, ADIv5, CoreSight, JTAG, SWD, etc.)
 > may be only partially represented or otherwise totally absent from this 
-> library. 
+> library. This works for my particular use case, but there are no hard 
+> guarantees in other cases. 
 >
-> There are no guarantees about the correctness/soundness of this library.
-> In general, you should probably not use this. 
+> Additionally, note that the server and library currently make assumptions 
+> based on my own environment with the Raspberry Pi 5. For instance:
+>
+> - There is no JTAG support 
+> - The USB backend assumes the PID/VID of the Raspberry Pi Debug Probe
+> - Some SWD primitives are hardcoded to target DAP index 0
+> - SWD DAP initialization may not be generalizable to other devices
 
 This library has two parts: 
 
@@ -45,11 +51,6 @@ $ ./target/release/daphne-server
 ```
 
 ## Client Usage
-
-> [!CAUTION]
-> This library crate might make assumptions about my target device 
-> (the Raspberry Pi 5). For instance, currently all DAP transactions are 
-> hard-coded to use DAP index 0. 
 
 The library crate includes a `DaphneClient` type that exposes methods for 
 connecting to the DAP on a target machine and performing DP/MEM-AP accesses.
